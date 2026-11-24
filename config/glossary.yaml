@@ -1,0 +1,33 @@
+# Starter term base for EN -> PT-BR.
+#
+# `forbidden_variants` is what makes compliance checkable: without a variant to
+# rule out, "did it use a synonym?" has no mechanical answer. Terms are mined
+# from the document in phase 2 and proposed here for human approval.
+
+- source_term: button
+  target_term: botão
+  forbidden_variants: [botao, tecla]
+- source_term: folder
+  target_term: pasta
+  forbidden_variants: [diretório, pastinha]
+- source_term: file
+  target_term: arquivo
+  forbidden_variants: [ficheiro]
+- source_term: library
+  target_term: biblioteca
+  forbidden_variants: [livraria]
+  notes: "False friend: 'livraria' is a bookshop."
+- source_term: driver
+  target_term: driver
+  do_not_translate: true
+  notes: "Software sense. A person who drives is 'motorista' and is a different term."
+- source_term: database
+  target_term: banco de dados
+  forbidden_variants: [base de dados]
+- source_term: settings
+  target_term: configurações
+  forbidden_variants: [ajustes, definições]
+- source_term: SAP Translation Hub
+  target_term: SAP Translation Hub
+  do_not_translate: true
+  case_sensitive: true

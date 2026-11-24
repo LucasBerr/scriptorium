@@ -1,0 +1,51 @@
+# Model and price pins.
+#
+# IMPORTANT: the ids and prices below are PLACEHOLDERS. Fill them from the
+# provider's own pricing page before the first billed run, and record the date
+# you read it. Do not copy figures from third-party rate-card blog posts: they
+# disagree with each other and go stale within weeks.
+#
+# Prices are USD per 1,000,000 tokens and are used only for cost accounting in
+# the evaluation report. A wrong number here does not break the pipeline, it
+# makes the cost column a lie.
+
+provider: openai
+pinned_from: "TODO: url of the official pricing page"
+pinned_on: "TODO: YYYY-MM-DD"
+
+roles:
+  # Main translation path and revision. Only segments that need it arrive here.
+  translator:
+    model: "TODO-frontier-model-id"
+    reasoning_effort: medium
+    price_input: 0.0
+    price_cached_input: 0.0
+    price_output: 0.0
+
+  # MQM review. A different model from the translator, on purpose: a model
+  # grading its own output agrees with itself more than it should.
+  reviewer:
+    model: "TODO-mid-tier-model-id"
+    reasoning_effort: medium
+    price_input: 0.0
+    price_cached_input: 0.0
+    price_output: 0.0
+
+  # Terminology candidate mining and other high-volume, low-judgement passes.
+  classifier:
+    model: "TODO-small-model-id"
+    reasoning_effort: low
+    price_input: 0.0
+    price_cached_input: 0.0
+    price_output: 0.0
+
+# Evaluation arm B6 only: same pipeline, same prompts, same schemas, second
+# provider in the translator role. Left disabled until phase 3.
+alt_provider:
+  enabled: false
+  provider: anthropic
+  translator:
+    model: "TODO-alt-frontier-model-id"
+    price_input: 0.0
+    price_cached_input: 0.0
+    price_output: 0.0

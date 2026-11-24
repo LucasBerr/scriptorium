@@ -1,0 +1,25 @@
+{"source": "Press the button to continue.", "reference": "Pressione o botão para continuar.", "structure": "paragraph", "note": "terminology: button"}
+{"source": "The file was moved to the folder.", "reference": "O arquivo foi movido para a pasta.", "structure": "paragraph", "note": "terminology: file, folder"}
+{"source": "Delete %d files from {folder}?", "reference": "Apagar %d arquivos de {folder}?", "structure": "paragraph", "note": "placeholders: printf and brace must both survive; 'folder' here is a variable name, not the term"}
+{"source": "Welcome back, %(name)s!", "reference": "Bem-vindo de volta, %(name)s!", "structure": "paragraph", "note": "named placeholder"}
+{"source": "Showing {count} of {total} results.", "reference": "Exibindo {count} de {total} resultados.", "structure": "paragraph", "note": "two placeholders, relative order preserved"}
+{"source": "Set $HOME before running the script.", "reference": "Defina $HOME antes de executar o script.", "structure": "paragraph", "note": "shell variable must survive"}
+{"source": "Click <b>Save</b> and then close the window.", "reference": "Clique em <b>Salvar</b> e depois feche a janela.", "structure": "paragraph", "note": "inline markup must wrap the translated word, not the source word"}
+{"source": "Save changes", "reference": "Salvar alterações", "structure": "heading", "note": "register: a heading stays terse"}
+{"source": "Settings", "reference": "Configurações", "structure": "heading", "note": "register: single-word heading"}
+{"source": "Enter your email address.", "reference": "Informe seu endereço de e-mail.", "structure": "list_item", "note": "list items stay parallel in form"}
+{"source": "Upload the document.", "reference": "Envie o documento.", "structure": "list_item", "note": "parallel imperative"}
+{"source": "Review the summary.", "reference": "Revise o resumo.", "structure": "list_item", "note": "parallel imperative"}
+{"source": "She is a doctor and he is a nurse.", "reference": "Ela é médica e ele é enfermeiro.", "structure": "paragraph", "note": "gender follows the referent, not the profession stereotype"}
+{"source": "The engineer finished her report.", "reference": "A engenheira terminou o relatório dela.", "structure": "paragraph", "note": "gender: 'her' marks the engineer as female"}
+{"source": "Each user must verify their own account.", "reference": "Cada usuário deve verificar a própria conta.", "structure": "paragraph", "note": "singular they: do not invent a gender"}
+{"source": "The library is open until 8 p.m.", "reference": "A biblioteca fica aberta até as 20h.", "structure": "paragraph", "note": "false friend 'library'; locale convention for clock time"}
+{"source": "We will eventually migrate the database.", "reference": "No fim, vamos migrar o banco de dados.", "structure": "paragraph", "note": "false friend: 'eventually' is not 'eventualmente'"}
+{"source": "He actually refused the offer.", "reference": "Na verdade, ele recusou a oferta.", "structure": "paragraph", "note": "false friend: 'actually' is not 'atualmente'"}
+{"source": "The driver failed to load.", "reference": "O driver não foi carregado.", "structure": "paragraph", "note": "ambiguous 'driver': software, not a person"}
+{"source": "The sample contained 1,250.75 grams.", "reference": "A amostra continha 1.250,75 gramas.", "structure": "paragraph", "note": "locale convention: decimal and thousand separators swap"}
+{"source": "The cost is $1,000 per month.", "reference": "O custo é de US$ 1.000 por mês.", "structure": "paragraph", "note": "currency symbol and separators follow the target locale"}
+{"source": "Almost 50% off, and 100% of readers agree.", "reference": "Quase 50% de desconto, e 100% dos leitores concordam.", "structure": "paragraph", "note": "percent signs here are prose, not format specifiers"}
+{"source": "SAP Translation Hub supports many languages.", "reference": "O SAP Translation Hub oferece suporte a muitos idiomas.", "structure": "paragraph", "note": "product names are not translated"}
+{"source": "Dr. Smith met Mr. Jones in the U.S. yesterday.", "reference": "O Dr. Smith encontrou o Sr. Jones nos EUA ontem.", "structure": "paragraph", "note": "abbreviations must not split the sentence"}
+{"source": "It did not work because it was corrupted.", "reference": "Não funcionou porque estava corrompido.", "structure": "paragraph", "note": "ambiguous pronoun: both occurrences share one antecedent"}

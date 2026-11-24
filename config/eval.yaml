@@ -1,0 +1,58 @@
+# Evaluation harness configuration.
+#
+# An arm is a named system under test. Quality and cost are always reported
+# together; a quality number without its cost is not a result.
+
+test_sets:
+  hard_cases:
+    path: eval/test_sets/hard_cases.jsonl
+    description: "Hand-written regression set: terminology traps, gender agreement, units, placeholders"
+  book_indomain:
+    path: eval/test_sets/book_indomain.jsonl
+    description: "Public-domain book with a published public-domain translation as reference"
+
+source_lang: en
+target_lang: pt-BR
+
+arms:
+  B0:
+    kind: baseline_mt
+    description: "Open baseline MT, no context"
+    enabled: false        # needs the [mt] extra
+  B1:
+    kind: llm_isolated
+    description: "LLM, segment in isolation, no glossary, no TM"
+    enabled: true
+  B2:
+    kind: llm_with_context
+    description: "LLM with document context, no glossary, no TM"
+    enabled: true
+  B3:
+    kind: full_pipeline
+    description: "TM + enforced glossary + reviewer loop"
+    enabled: false        # phase 2
+  B4:
+    kind: finetuned_mt
+    description: "Domain-adapted local model"
+    enabled: false        # phase 3
+  B5:
+    kind: full_pipeline_routed
+    description: "B3 with QE-based routing"
+    enabled: false        # phase 3
+  B6:
+    kind: full_pipeline_alt_provider
+    description: "B5 with the frontier role on a second provider"
+    enabled: false        # phase 3
+
+metrics:
+  - chrf
+  - bleu
+  - ter
+  - terminology_compliance
+  - intra_document_consistency
+  - placeholder_integrity
+
+significance:
+  method: paired_bootstrap
+  samples: 1000
+  alpha: 0.05

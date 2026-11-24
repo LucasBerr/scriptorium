@@ -1,0 +1,116 @@
+[project]
+name = "scriptorium"
+version = "0.1.0"
+description = "Terminology-controlled machine translation for long documents"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+
+dependencies = [
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "pysbd>=0.3.4",
+    "EbookLib>=0.18",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.3",
+    "sacrebleu>=2.4",
+    "openai>=1.54",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.9",
+]
+
+[project.optional-dependencies]
+# Local baseline and fine-tuned MT. Heavy (torch); not needed for the eval harness
+# or the test suite, so it is deliberately not a core dependency.
+mt = [
+    "torch>=2.5",
+    "transformers>=4.46",
+    "sentencepiece>=0.2",
+    "peft>=0.13",
+]
+# Neural evaluation metrics. Also heavy, and pinned separately because COMET
+# checkpoints must be downloaded once and cached.
+comet = [
+    "unbabel-comet>=2.2",
+]
+# Second provider, used only by evaluation arm B6.
+alt-provider = [
+    "anthropic>=0.39",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.112",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "types-PyYAML>=6.0",
+]
+
+[project.scripts]
+scriptorium = "scriptorium.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scriptorium"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort
+    "N",         # pep8-naming
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "C4",        # comprehensions
+    "SIM",       # simplify
+    "RUF",       # ruff-specific
+    "ANN",       # annotations
+    "PTH",       # use pathlib
+]
+ignore = [
+    "ANN401",    # allow typing.Any where it is genuinely dynamic
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN201", "ANN001"]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+python_version = "3.12"
+files = ["src", "tests"]
+strict = true
+warn_unreachable = true
+# Third-party packages without type stubs. Listed explicitly rather than
+# silenced globally, so a new untyped import is a visible decision.
+[[tool.mypy.overrides]]
+module = ["pysbd.*", "ebooklib.*", "bs4.*"]
+ignore_missing_imports = true
+
+# sacrebleu is typed but does not declare its re-exports.
+[[tool.mypy.overrides]]
+module = ["sacrebleu.*"]
+ignore_missing_imports = true
+implicit_reexport = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "network: test requires outbound network or a provider API key (skipped in CI)",
+]
+# pysbd and ebooklib emit warnings from their own source at import time.
+# Silenced here rather than globally so a warning from this project's code is
+# still visible.
+filterwarnings = [
+    "ignore::SyntaxWarning",
+    "ignore::UserWarning",
+]

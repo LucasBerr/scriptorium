@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets
+.env
+.env.local
+
+# Data: tracked by DVC, never by git
+data/raw/*
+data/interim/*
+data/processed/*
+!data/**/.gitkeep
+*.epub
+*.pdf
+
+# Experiment tracking
+mlruns/
+outputs/
+
+# Portfolio planning notes, not part of the project
+PORTFOLIO-STRATEGY.md
+
+# Generated evaluation runs. The curated report is reports/evaluation.md.
+reports/evaluation-run.md
