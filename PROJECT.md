@@ -124,12 +124,27 @@ features are needed. Each segment carries a content hash for caching and dedupli
   the source. Retrieval is hybrid: exact hash hit → fuzzy match (token-level edit distance, the
   classic CAT-tool behaviour) → semantic neighbours via vector search. An exact hit above the
   approval threshold short-circuits the LLM entirely, which is both a quality and a cost win.
-- **Terminology base**: `(source_term, target_term, forbidden_variants, do_not_translate,
-  case_sensitivity, notes, status)`. Terms are *extracted* on a first pass over the document
-  (candidate mining over noun phrases + named entities, scored by document frequency and
-  distinctiveness), proposed to the human, and then **enforced**: injected into the prompt, and
-  verified post-hoc by a deterministic checker that fails the segment if a term is rendered wrong.
-  Enforcement is what makes the claim testable; the prompt alone is not enforcement.
+- **Terminology base**: `(source_term, target_term, acceptable_variants, forbidden_variants,
+  inflected_forms, do_not_translate, case_sensitivity, notes)`. Terms are *extracted* on a first
+  pass over the document (candidate mining over noun phrases + named entities, scored by document
+  frequency and distinctiveness), proposed to the human, and then **enforced**: injected into the
+  prompt, and verified post-hoc by a deterministic checker that fails the segment if a term is
+  rendered wrong. Enforcement is what makes the claim testable; the prompt alone is not
+  enforcement.
+- Two refinements the first terminology-heavy evaluation run forced, both recorded as decisions
+  rather than fixes:
+  - **Acceptable variants are separate from forbidden ones.** Both *e-mail* and *email* are correct
+    Brazilian Portuguese, so a term base that allowed only one would fail correct translations.
+    Enforcement accepts any acceptable form; the rendering ledger then holds the *document* to
+    whichever one it used first. Without that split, consistency would have nothing to add over
+    compliance, because every term would have exactly one legal rendering.
+  - **Matching is inflection-aware.** Matching the stored form literally scored the project's own
+    reference translations at 90.9% compliance — *arquivos* did not match `arquivo`, *Entre* did
+    not match `entrar`. That is not a reporting problem: the orchestrator would have demanded
+    revisions of correct segments and routed them to a human. Terms are expanded to their
+    legitimate surface forms by rule, per language, over-generating rather than under-generating so
+    that the error direction is a missed violation and never an invented one. See
+    [ADR 0004](docs/adr/0004-terminology-morphology.md).
 
 ### 4.3 Context engineering
 
@@ -254,7 +269,7 @@ scriptorium/
 │   ├── adapters/        # epub, pdf, po, json → Segment[]  (+ reassembly)
 │   ├── segmentation/    # sentence splitting, placeholder protection
 │   ├── memory/          # TM store, fuzzy + vector retrieval
-│   ├── terminology/     # mining, store, enforcement checker
+│   ├── terminology/     # mining, store, enforcement, morphology, ledger
 │   ├── context/         # per-segment context assembly, rolling summary
 │   ├── orchestrator/    # agent loop, tools, schemas, prompts/
 │   ├── models/          # baseline MT, LoRA training, QE model
@@ -264,7 +279,7 @@ scriptorium/
 │   └── audit/           # structured audit log, cost accounting
 ├── ui/                  # reviewer interface
 ├── data/                # DVC-tracked; nothing large in git
-├── eval/                # test sets, harness, baselines
+├── eval/                # test sets (40 hard cases), baselines
 ├── reports/             # evaluation.md, model-card.md, data-statement.md
 ├── docs/adr/            # architecture decision records
 ├── tests/
@@ -293,6 +308,15 @@ TM store with hybrid retrieval, term mining and enforcement, the translate→rev
 real tools and MQM-typed output, FastAPI, reviewer UI with post-edit writeback, `.po` adapter.
 **Done when** terminology compliance ≥ 98% and intra-document consistency ≥ 99% on the hard-case
 set, and B3 beats B2 on COMET with paired bootstrap p < 0.05.
+
+**Core done.** TM with hybrid retrieval, mining, inflection-aware enforcement, the rendering
+ledger, the loop with six typed tools and MQM output, and the `.po` adapter are built and tested
+(221 tests, `make check` green). FastAPI and the reviewer UI are deliberately deferred: they are
+plumbing around numbers that do not exist yet. What the offline arms establish is that the
+*instrument* is sound (the ceiling tops out on every metric) and that the *loop recovers the
+defects it claims to* — 48.8% → 100% terminology compliance over 22 deliberately broken segments,
+and 76.7% → 100% consistency. The two numeric criteria above still need a billed run, which needs
+real model ids and prices pinned in `config/models.yaml`.
 
 ### Phase 3 — Trained models (2–3 weeks)
 Sentence alignment of the book corpus (embedding + dynamic programming), dataset cleaning and
@@ -339,8 +363,12 @@ how well it does it in under five minutes.
 
 ## 10. Open decisions
 
-- Vector store: `pgvector` (one Postgres for TM + metadata + vectors, simplest ops) vs. LanceDB
-  (no server). Leaning Postgres, since one datastore is easier to defend than two.
+- ~~Vector store~~ **decided**: SQLite with in-process vectors, so the repository runs from a
+  fresh clone and CI needs no service. See [ADR 0003](docs/adr/0003-translation-memory-datastore.md),
+  which supersedes the earlier lean towards Postgres and says why the weighting changed.
+- ~~Orchestration~~ **decided**: hand-written. The control flow is the contribution and belongs in
+  the repository where it can be read; the provider interface stayed thin enough that B6 is a config
+  change. Original reasoning kept below, because the decision was made on it:
 - Orchestration: a framework's agent loop vs. a hand-written one. Leaning hand-written — the
   control flow is the interesting part and should be readable in the repository, and it keeps the
   provider interface thin enough for B6 to be a config change.
@@ -350,3 +378,9 @@ how well it does it in under five minutes.
   localized TOC — but it mixes navigation text into a corpus meant to measure prose quality.
   Decision for phase 2: tag segments with the role of their container (`content` vs `navigation`)
   and let the evaluation filter, rather than dropping the nav outright.
+- Morphology coverage. The inflection rules are hand-written for EN and PT-BR and stop at nouns,
+  adjectives and verbs. A second language pair needs its own rules, and a term the rules get wrong
+  needs `inflected_forms` set by hand. Whether that scales to a term base of thousands is untested;
+  the honest answer at this size is that it has not had to.
+- Compliance is now a slightly generous measure, by construction (ADR 0004). Any report must say
+  that it under-counts rather than over-counts violations.

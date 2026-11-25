@@ -10,12 +10,28 @@ Scriptorium is a translation pipeline that enforces a terminology base in code, 
 few-shot examples from a translation memory, reviews its output against an MQM error typology, and
 reports quality *and* cost per 1,000 words against open baselines.
 
-> **Status: phase 1 in progress.** The evaluation harness is built before the pipeline it judges —
-> see [ADR 0001](docs/adr/0001-scope-and-language-pair.md). The harness, the EPUB adapter and the
-> metrics are in place and self-checking: `scriptorium eval` runs an echo floor and a
-> reference-replaying ceiling over the hard-case set and confirms the ceiling tops out on every
-> metric. No model-backed arm has run yet, so there are no headline quality numbers; this line is
-> replaced by the metric table when phase 1 closes.
+> **Status: phase 2 core complete, no billed run yet.** The pipeline is built and tested end to
+> end offline — term base with inflection-aware enforcement, translation memory with hybrid
+> retrieval, the translate → review → revise loop with typed tools and MQM output, EPUB and
+> gettext adapters. `scriptorium eval` runs two checks that need no API key:
+>
+> | Arm | chrF++ | Terminology | Consistency | Placeholders |
+> |---|---:|---:|---:|---:|
+> | floor (echo) | 19.39 | 16.3% | 100.0% | 100.0% |
+> | ceiling (oracle) | 100.00 | 100.0% | 100.0% | 100.0% |
+> | sloppy provider, no loop | 88.13 | 48.8% | 76.7% | 100.0% |
+> | the same provider, with the loop | 100.00 | 100.0% | 100.0% | 100.0% |
+>
+> 40 hard cases, EN → PT-BR. The first two rows check the *instrument*: a ceiling that does not top
+> out would mean no comparison between real systems could be trusted. The last two check the
+> *loop*: a provider derived from the references with one accepted term form swapped for a
+> forbidden variant in 22 of 40 segments, run with and without the orchestrator. The deterministic
+> check catches the defect and one revision fixes it.
+>
+> **These are not quality numbers.** The scripted providers replay the references, so chrF++ here is
+> a ceiling, not a result. Quality and cost against real models need the model ids and prices pinned
+> in `config/models.yaml`; until they are, the billed arms refuse to run. See
+> [ADR 0001](docs/adr/0001-scope-and-language-pair.md) for why the harness was built first.
 
 ## What is here
 

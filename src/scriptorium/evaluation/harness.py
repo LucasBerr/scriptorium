@@ -20,7 +20,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from scriptorium.domain import GlossaryTerm, Segment, StructureKind
-from scriptorium.providers.base import LLMProvider, TranslationRequest
+from scriptorium.providers.base import LLMProvider, ProviderResult, TranslationRequest
 from scriptorium.quality import metrics
 from scriptorium.segmentation.placeholders import check_integrity, protect, restore
 
@@ -119,19 +119,31 @@ class Harness:
             context_after=context_after,
         )
 
-    def run_arm(
-        self,
-        arm: str,
-        provider: LLMProvider,
-        *,
-        with_context: bool = False,
-    ) -> ArmResult:
-        """Run one arm and score it."""
-        requests = [
+    def requests(self, *, with_context: bool = False) -> list[TranslationRequest]:
+        """Build the requests for an arm.
+
+        Public because an arm is not always a provider: the orchestrator loop is
+        also an arm, and it has to receive exactly the same requests to be
+        comparable. Scoring is likewise public, so nothing can score an arm
+        differently from how `run_arm` would.
+        """
+        return [
             self._request(index, case, with_context=with_context)
             for index, case in enumerate(self.cases)
         ]
-        results = provider.translate_batch(requests)
+
+    def score(
+        self,
+        arm: str,
+        results: Sequence[ProviderResult],
+        *,
+        provider: str = "unknown",
+        model: str = "unknown",
+    ) -> ArmResult:
+        """Score one arm's outputs. The only place metrics are computed."""
+        if len(results) != len(self.cases):
+            msg = f"arm {arm!r} returned {len(results)} results for {len(self.cases)} cases"
+            raise ValueError(msg)
 
         # The provider works in protected space: what it returns still carries
         # placeholder tokens. Integrity is therefore checked on the raw response,
@@ -173,8 +185,8 @@ class Harness:
 
         return ArmResult(
             arm=arm,
-            provider=getattr(provider, "name", "unknown"),
-            model=getattr(provider, "model", "unknown"),
+            provider=provider,
+            model=model,
             segments=len(self.cases),
             chrf=metrics.chrf(hypotheses, references),
             bleu=metrics.bleu(hypotheses, references),
@@ -187,6 +199,23 @@ class Harness:
             cache_hit_rate=(total_cached / total_input) if total_input else 0.0,
             sentence_scores=tuple(metrics.sentence_chrf(hypotheses, references)),
             hypotheses=tuple(hypotheses),
+        )
+
+    def run_arm(
+        self,
+        arm: str,
+        provider: LLMProvider,
+        *,
+        with_context: bool = False,
+    ) -> ArmResult:
+        """Run one arm and score it."""
+        requests = self.requests(with_context=with_context)
+        results = provider.translate_batch(requests)
+        return self.score(
+            arm,
+            results,
+            provider=str(getattr(provider, "name", "unknown")),
+            model=str(getattr(provider, "model", "unknown")),
         )
 
     @staticmethod

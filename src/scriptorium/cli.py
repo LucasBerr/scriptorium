@@ -17,9 +17,16 @@ from rich.table import Table
 
 from scriptorium.adapters import EpubAdapter, Provenance
 from scriptorium.config import ModelsConfig, Settings, load_glossary
-from scriptorium.evaluation import Harness, load_test_set, render_markdown_table
+from scriptorium.evaluation import (
+    Harness,
+    load_test_set,
+    render_markdown_table,
+    sloppy_recordings,
+)
+from scriptorium.orchestrator import TranslationLoop
 from scriptorium.providers import EchoProvider, ScriptedProvider
 from scriptorium.segmentation.placeholders import protect
+from scriptorium.terminology import TerminologyStore
 
 app = typer.Typer(add_completion=False, help="Terminology-controlled machine translation.")
 console = Console()
@@ -101,10 +108,18 @@ def run_eval(
 ) -> None:
     """Run the evaluation arms and print the metric table.
 
-    With no billed provider configured this runs the harness self-check: the
-    echo floor and a reference-replaying ceiling. If the ceiling does not top out
-    on every metric, the instrument is broken and no comparison between real
-    systems would mean anything — which is why this is worth running on its own.
+    With no billed provider configured, this runs the two checks that need no
+    model at all:
+
+    1. **The instrument.** An echo floor and a reference-replaying ceiling. If
+       the ceiling does not top out on every metric, the harness is broken and
+       no comparison between real systems would mean anything.
+    2. **The loop.** A provider that makes terminology errors, run with and
+       without the orchestrator. If terminology compliance does not rise, the
+       agentic layer does not do what this project says it does.
+
+    Neither check says anything about translation quality, and the report says so
+    where it would otherwise be easy to misread.
     """
     settings = Settings()
     spec = yaml.safe_load(config_path.read_text(encoding="utf-8"))
@@ -121,9 +136,24 @@ def run_eval(
     )
 
     oracle = {protect(c.source).text: protect(c.reference).text for c in cases}
+    sloppy = sloppy_recordings(cases, glossary)
+
+    def scripted() -> ScriptedProvider:
+        return ScriptedProvider(sloppy.translations, revisions=sloppy.revisions)
+
+    loop = TranslationLoop(
+        scripted(),
+        source_lang=spec["source_lang"],
+        target_lang=spec["target_lang"],
+        terminology=TerminologyStore(glossary),
+        max_revisions=2,
+    )
+
     results = [
         harness.run_arm("floor (echo)", EchoProvider()),
         harness.run_arm("ceiling (oracle)", ScriptedProvider(oracle), with_context=True),
+        harness.run_arm("sloppy (no loop)", scripted(), with_context=True),
+        harness.run_arm("sloppy + loop", loop, with_context=True),
     ]
 
     config = _models_config(settings)
@@ -137,23 +167,51 @@ def run_eval(
     table = render_markdown_table(results)
     console.print(table)
 
-    comparison = Harness.compare(results[0], results[1])
+    instrument = Harness.compare(results[0], results[1])
     console.print(
-        f"\nceiling vs floor: chrF++ {comparison.mean_difference:+.2f} "
-        f"(95% CI {comparison.ci_low:+.2f}..{comparison.ci_high:+.2f}, "
-        f"p={comparison.p_value:.3f}, n={len(cases)})"
+        f"\ninstrument — ceiling vs floor, chrF++: {instrument.mean_difference:+.2f} "
+        f"(95% CI {instrument.ci_low:+.2f}..{instrument.ci_high:+.2f}, "
+        f"p={instrument.p_value:.3f}, n={len(cases)})"
     )
+
+    before, after = results[2], results[3]
+    gain = after.terminology_compliance - before.terminology_compliance
+    console.print(
+        f"loop — terminology compliance: {before.terminology_compliance:.1%} -> "
+        f"{after.terminology_compliance:.1%} ({gain:+.1%}) over "
+        f"{sloppy.spoiled}/{len(cases)} deliberately broken segments"
+    )
+    if sloppy.spoiled == 0:
+        console.print(
+            "[yellow]Nothing was broken:[/] no reference in this test set contains a "
+            "term with a forbidden variant, so the two loop arms are the same arm."
+        )
 
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(
         "# Evaluation run\n\n"
         f"Test set: `{first_set['path']}` ({len(cases)} segments, "
         f"{spec['source_lang']} -> {spec['target_lang']})\n\n"
+        "No billed provider was used. The arms below are offline self-checks: the\n"
+        "string metrics are a floor and a ceiling, not a result, because the\n"
+        "scripted providers replay the references themselves.\n\n"
         f"{table}\n\n"
-        f"Paired bootstrap, ceiling vs floor on per-segment chrF++: "
-        f"{comparison.mean_difference:+.2f} "
-        f"(95% CI {comparison.ci_low:+.2f}..{comparison.ci_high:+.2f}, "
-        f"p={comparison.p_value:.3f})\n",
+        "## Is the instrument working?\n\n"
+        "Paired bootstrap on per-segment chrF++, ceiling vs floor: "
+        f"{instrument.mean_difference:+.2f} "
+        f"(95% CI {instrument.ci_low:+.2f}..{instrument.ci_high:+.2f}, "
+        f"p={instrument.p_value:.3f})\n\n"
+        "## Does the loop recover terminology errors?\n\n"
+        f"A provider was derived from the references with one accepted term form\n"
+        f"swapped for a forbidden variant in {sloppy.spoiled} of {len(cases)} segments. "
+        "Run without the\n"
+        "orchestrator, that defect reaches the output; run with it, the "
+        "deterministic\ncheck catches it and one revision fixes it.\n\n"
+        f"- terminology compliance without the loop: {before.terminology_compliance:.1%}\n"
+        f"- terminology compliance with the loop: {after.terminology_compliance:.1%}\n"
+        f"- cost of the loop on this run: ${after.cost_usd:.4f} "
+        "(the scripted provider is free; the figure is here so that it stops being "
+        "zero the moment a real provider is pinned)\n",
         encoding="utf-8",
     )
     console.print(f"\nwritten to {report}")

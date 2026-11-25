@@ -7,11 +7,14 @@ from scriptorium.evaluation.harness import (
     load_test_set,
     render_markdown_table,
 )
+from scriptorium.evaluation.selfcheck import SloppyRecordings, sloppy_recordings
 
 __all__ = [
     "ArmResult",
     "Harness",
+    "SloppyRecordings",
     "TestCase",
     "load_test_set",
     "render_markdown_table",
+    "sloppy_recordings",
 ]
