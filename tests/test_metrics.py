@@ -30,7 +30,7 @@ def test_terminology_compliance_catches_an_absent_term(glossary: list[GlossaryTe
         ["Press the button."], ["Pressione o elemento."], glossary
     )
     assert report.rate == 0.0
-    assert report.violations[0].detail == "required target form absent"
+    assert report.violations[0].detail == "no accepted target form present"
 
 
 def test_terminology_is_only_applicable_when_the_term_occurs(

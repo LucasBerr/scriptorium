@@ -18,8 +18,6 @@ that moved without a p-value is not a result.
 from __future__ import annotations
 
 import random
-import re
-from collections import Counter
 from collections.abc import Sequence
 
 from pydantic import BaseModel
@@ -27,8 +25,8 @@ from sacrebleu.metrics import BLEU, CHRF, TER
 
 from scriptorium.domain import GlossaryTerm
 from scriptorium.segmentation.placeholders import IntegrityReport
-
-_WORD_LIKE = re.compile(r"^[\w\s'-]+$", re.UNICODE)
+from scriptorium.terminology.enforcement import TerminologyViolation, applicable_terms, enforce
+from scriptorium.terminology.store import RenderingLedger
 
 
 def chrf(hypotheses: Sequence[str], references: Sequence[str]) -> float:
@@ -59,32 +57,6 @@ def sentence_chrf(hypotheses: Sequence[str], references: Sequence[str]) -> list[
     ]
 
 
-def _pattern(term: str, *, case_sensitive: bool) -> re.Pattern[str]:
-    """Match a term, with word boundaries when the term looks like words.
-
-    A term containing punctuation or markup cannot rely on `\\b`, so it falls
-    back to a plain substring match.
-    """
-    flags = 0 if case_sensitive else re.IGNORECASE
-    if _WORD_LIKE.match(term):
-        return re.compile(rf"\b{re.escape(term)}\b", flags)
-    return re.compile(re.escape(term), flags)
-
-
-def _count(text: str, term: str, *, case_sensitive: bool) -> int:
-    return len(_pattern(term, case_sensitive=case_sensitive).findall(text))
-
-
-class TerminologyViolation(BaseModel):
-    """One place where the term base was not honoured."""
-
-    index: int
-    source_term: str
-    expected: str
-    found: str
-    detail: str
-
-
 class TerminologyReport(BaseModel):
     applicable: int = 0
     compliant: int = 0
@@ -92,7 +64,7 @@ class TerminologyReport(BaseModel):
 
     @property
     def rate(self) -> float:
-        """Share of applicable term occurrences rendered correctly. 1.0 when none apply."""
+        """Share of applicable term checks that passed. 1.0 when none apply."""
         return 1.0 if self.applicable == 0 else self.compliant / self.applicable
 
 
@@ -101,61 +73,26 @@ def terminology_compliance(
     hypotheses: Sequence[str],
     glossary: Sequence[GlossaryTerm],
 ) -> TerminologyReport:
-    """Check every glossary term that occurs in the source against the translation.
+    """Score the term base over a corpus.
 
-    A term is *applicable* to a segment when it occurs in that segment's source.
-    It is compliant when the required target form is present and no forbidden
-    variant is. A forbidden variant is what makes this checkable: without one,
-    "did it use a synonym?" has no mechanical answer.
+    This calls the same :func:`scriptorium.terminology.enforce` the pipeline uses
+    to decide whether to ask for a revision. One implementation, so the target
+    the pipeline optimises against and the number the report prints cannot drift.
+
+    A term is *applicable* to a segment when it occurs in that segment's source,
+    and each (segment, term) pair is one check.
     """
     applicable = 0
-    compliant = 0
     violations: list[TerminologyViolation] = []
 
     for index, (source, hypothesis) in enumerate(zip(sources, hypotheses, strict=True)):
-        for term in glossary:
-            if _count(source, term.source_term, case_sensitive=term.case_sensitive) == 0:
-                continue
-            applicable += 1
-            required = term.source_term if term.do_not_translate else term.target_term
-
-            bad_variant = next(
-                (
-                    variant
-                    for variant in term.forbidden_variants
-                    if _count(hypothesis, variant, case_sensitive=term.case_sensitive) > 0
-                ),
-                None,
-            )
-            if bad_variant is not None:
-                violations.append(
-                    TerminologyViolation(
-                        index=index,
-                        source_term=term.source_term,
-                        expected=required,
-                        found=bad_variant,
-                        detail="forbidden variant used",
-                    )
-                )
-                continue
-
-            if _count(hypothesis, required, case_sensitive=term.case_sensitive) == 0:
-                violations.append(
-                    TerminologyViolation(
-                        index=index,
-                        source_term=term.source_term,
-                        expected=required,
-                        found="",
-                        detail="required target form absent",
-                    )
-                )
-                continue
-
-            compliant += 1
+        applicable += len(applicable_terms(source, glossary))
+        for violation in enforce(source, hypothesis, glossary):
+            violations.append(violation.model_copy(update={"index": index}))
 
     return TerminologyReport(
         applicable=applicable,
-        compliant=compliant,
+        compliant=applicable - len(violations),
         violations=tuple(violations),
     )
 
@@ -178,39 +115,30 @@ def intra_document_consistency(
 ) -> ConsistencyReport:
     """Measure whether a repeated term gets the same rendering every time.
 
-    Scope and limitation, stated plainly: consistency is measured over the
-    *known* variant set — the required target form plus the forbidden variants in
-    the term base. A rendering nobody anticipated is invisible here, which is why
-    term mining feeds the term base rather than the other way round. The honest
-    version of this metric needs word alignment; this one needs a glossary, and
-    says so.
-    """
-    per_term: dict[str, Counter[str]] = {}
+    This is the page-12-versus-page-280 problem, and it is scored with the same
+    :class:`RenderingLedger` the orchestrator consults while translating — so the
+    metric measures the mechanism rather than a reimplementation of it.
 
+    Limitation, inherited from the ledger: consistency is observed over the known
+    forms in the term base. A rendering nobody anticipated is invisible, which is
+    why mining feeds the term base and why word alignment is the phase-3 upgrade.
+    """
+    ledger = RenderingLedger(glossary)
     for source, hypothesis in zip(sources, hypotheses, strict=True):
-        for term in glossary:
-            if _count(source, term.source_term, case_sensitive=term.case_sensitive) == 0:
-                continue
-            required = term.source_term if term.do_not_translate else term.target_term
-            counts = per_term.setdefault(term.source_term, Counter())
-            for form in (required, *term.forbidden_variants):
-                found = _count(hypothesis, form, case_sensitive=term.case_sensitive)
-                if found:
-                    counts[form] += found
+        ledger.observe(source, hypothesis)
 
     observed = 0
     in_modal = 0
-    for counts in per_term.values():
+    per_term: dict[str, dict[str, int]] = {}
+    for term in glossary:
+        counts = ledger.renderings(term.source_term)
         if not counts:
             continue
+        per_term[term.source_term] = counts
         observed += sum(counts.values())
-        in_modal += counts.most_common(1)[0][1]
+        in_modal += max(counts.values())
 
-    return ConsistencyReport(
-        observed=observed,
-        in_modal_form=in_modal,
-        per_term={term: dict(counts) for term, counts in per_term.items() if counts},
-    )
+    return ConsistencyReport(observed=observed, in_modal_form=in_modal, per_term=per_term)
 
 
 def placeholder_integrity(reports: Sequence[IntegrityReport]) -> float:

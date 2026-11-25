@@ -1,8 +1,16 @@
 # Starter term base for EN -> PT-BR.
 #
 # `forbidden_variants` is what makes compliance checkable: without a variant to
-# rule out, "did it use a synonym?" has no mechanical answer. Terms are mined
-# from the document in phase 2 and proposed here for human approval.
+# rule out, "did it use a synonym?" has no mechanical answer.
+#
+# `acceptable_variants` are the forms that also pass the check. They exist so
+# consistency can be a stricter requirement than compliance: both "e-mail" and
+# "email" are correct Brazilian Portuguese, and a term base that forbade one
+# would be failing a correct translation — but a single document that uses both
+# is sloppy, and that is what the rendering ledger catches.
+#
+# Terms are mined from the document and proposed here for human approval. No
+# entry arrives in this file without a person putting it there.
 
 - source_term: button
   target_term: botão
@@ -31,3 +39,13 @@
   target_term: SAP Translation Hub
   do_not_translate: true
   case_sensitive: true
+- source_term: email
+  target_term: e-mail
+  acceptable_variants: [email]
+  forbidden_variants: [correio eletrônico]
+  notes: "Both hyphenations are correct; the document must pick one and keep it."
+- source_term: sign in
+  target_term: entrar
+  acceptable_variants: [fazer login]
+  forbidden_variants: [iniciar sessão, logar]
+  notes: "'iniciar sessão' is European Portuguese; 'logar' is too informal for docs."

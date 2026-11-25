@@ -62,6 +62,14 @@ def glossary() -> list[GlossaryTerm]:
             forbidden_variants=("botao", "tecla"),
         ),
         GlossaryTerm(source_term="folder", target_term="pasta", forbidden_variants=("diretório",)),
+        # Two correct renderings, one document: enforcement accepts either,
+        # consistency does not. This is the term the ledger-pinning tests need.
+        GlossaryTerm(
+            source_term="email",
+            target_term="e-mail",
+            acceptable_variants=("email",),
+            forbidden_variants=("correio eletrônico",),
+        ),
     ]
 
 

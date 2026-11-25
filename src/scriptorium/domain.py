@@ -242,16 +242,48 @@ class Translation(BaseModel):
 class GlossaryTerm(BaseModel):
     """A term whose rendering is enforced, not suggested.
 
-    `forbidden_variants` is what makes enforcement checkable: a translation that
-    uses a variant fails the terminology check even if it reads well.
+    Three sets of forms, and the distinction between them is what makes both
+    enforcement and consistency checkable:
+
+    * `target_term` is the preferred rendering.
+    * `acceptable_variants` also pass enforcement. A term base that allows none
+       of these is usually lying: "file" is legitimately *arquivo* in most
+       contexts, and a term base that forbids every alternative would fail
+       correct translations. They exist so that consistency can be a separate,
+       stricter requirement — the term base allows a set, and the *document* is
+       held to whichever member of that set it used first (see RenderingLedger).
+    * `forbidden_variants` fail enforcement outright, even when they read well.
+       Without something to rule out, "did it quietly use a synonym?" has no
+       answer a machine can give.
     """
 
     source_term: str = Field(min_length=1)
     target_term: str = Field(min_length=1)
+    acceptable_variants: tuple[str, ...] = ()
     forbidden_variants: tuple[str, ...] = ()
+    inflected_forms: tuple[str, ...] = ()
+    """Explicit surface forms, replacing the generated ones.
+
+    Set this when the inflection rules get a word wrong — an irregular plural, a
+    term that must appear in exactly one form. Setting it turns rule generation
+    off for this term, so the list has to be complete.
+    """
     do_not_translate: bool = False
     case_sensitive: bool = False
     notes: str = ""
+
+    @model_validator(mode="after")
+    def _variants_must_not_conflict(self) -> GlossaryTerm:
+        clash = set(self.acceptable_variants) & set(self.forbidden_variants)
+        if clash:
+            msg = (
+                f"term {self.source_term!r} lists {sorted(clash)} as both acceptable and forbidden"
+            )
+            raise ValueError(msg)
+        if self.target_term in self.forbidden_variants:
+            msg = f"term {self.source_term!r} forbids its own target form"
+            raise ValueError(msg)
+        return self
 
 
 class TMEntry(BaseModel):
