@@ -14,6 +14,11 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "lxml>=5.3",
     "sacrebleu>=2.4",
+    # Upper bound is COMET's, not ours: unbabel-comet pins numpy<2. Raising this
+    # silently makes the [comet] extra uninstallable, which would be discovered
+    # in phase 3 when the neural metrics are needed most.
+    "numpy>=1.26,<2",
+    "polib>=1.2",
     "openai>=1.54",
     "pyyaml>=6.0",
     "typer>=0.12",
@@ -26,7 +31,8 @@ dependencies = [
 mt = [
     "torch>=2.5",
     "transformers>=4.46",
-    "sentencepiece>=0.2",
+    # Also COMET's constraint (sentencepiece<0.2), so the extras stay co-installable.
+    "sentencepiece>=0.1.96,<0.2",
     "peft>=0.13",
 ]
 # Neural evaluation metrics. Also heavy, and pinned separately because COMET
@@ -92,7 +98,7 @@ warn_unreachable = true
 # Third-party packages without type stubs. Listed explicitly rather than
 # silenced globally, so a new untyped import is a visible decision.
 [[tool.mypy.overrides]]
-module = ["pysbd.*", "ebooklib.*", "bs4.*"]
+module = ["pysbd.*", "ebooklib.*", "bs4.*", "polib.*"]
 ignore_missing_imports = true
 
 # sacrebleu is typed but does not declare its re-exports.
