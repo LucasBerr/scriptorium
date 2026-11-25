@@ -29,25 +29,29 @@ from typing import Any
 from openai import OpenAI
 
 from scriptorium.config import ModelSpec, Settings
-from scriptorium.domain import TokenUsage
-from scriptorium.prompting import build_translation_prompt
+from scriptorium.domain import Review, TokenUsage
+from scriptorium.prompting import (
+    Prompt,
+    build_review_prompt,
+    build_revision_prompt,
+    build_translation_prompt,
+)
 from scriptorium.providers.base import (
     OfflineError,
     ProviderResult,
     ProviderUnpinnedError,
+    ReviewRequest,
+    ReviewResult,
+    RevisionRequest,
     TranslationPayload,
     TranslationRequest,
 )
+from scriptorium.providers.schema import strict_json_schema
 
-_TRANSLATION_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "translation": {"type": "string"},
-        "notes": {"type": "string"},
-    },
-    "required": ["translation", "notes"],
-    "additionalProperties": False,
-}
+# Generated from the Pydantic models rather than hand-written, so the schema the
+# provider enforces and the model the code validates against cannot drift apart.
+_TRANSLATION_SCHEMA: dict[str, Any] = strict_json_schema(TranslationPayload)
+_REVIEW_SCHEMA: dict[str, Any] = strict_json_schema(Review)
 
 
 class MissingCredentialError(RuntimeError):
@@ -76,19 +80,18 @@ class OpenAIProvider:
         self._spec = spec
         self._client = OpenAI(api_key=settings.openai_api_key)
 
-    def translate(self, request: TranslationRequest) -> ProviderResult:
-        prompt = build_translation_prompt(
-            request.segment,
-            source_lang=request.source_lang,
-            target_lang=request.target_lang,
-            style_guide=request.style_guide,
-            glossary=request.glossary,
-            examples=request.examples,
-            context_before=request.context_before,
-            context_after=request.context_after,
-            document_summary=request.document_summary,
-        )
+    def _complete(
+        self,
+        prompt: Prompt,
+        *,
+        schema: dict[str, Any],
+        schema_name: str,
+    ) -> tuple[dict[str, Any], ProviderResult]:
+        """One structured-output request. Shared by all three roles.
 
+        Returns the parsed payload and a :class:`ProviderResult` carrying the
+        metering, so each role only has to say what it wanted from the payload.
+        """
         extra: dict[str, Any] = {}
         if self._spec.reasoning_effort:
             extra["reasoning_effort"] = self._spec.reasoning_effort
@@ -102,22 +105,18 @@ class OpenAIProvider:
             ],
             response_format={
                 "type": "json_schema",
-                "json_schema": {
-                    "name": "translation",
-                    "strict": True,
-                    "schema": _TRANSLATION_SCHEMA,
-                },
+                "json_schema": {"name": schema_name, "strict": True, "schema": schema},
             },
             **extra,
         )
         latency_ms = int((time.monotonic() - started) * 1000)
 
         content = response.choices[0].message.content or ""
-        payload = TranslationPayload.model_validate(json.loads(content))
+        payload: dict[str, Any] = json.loads(content)
         usage = self._usage(response)
 
-        return ProviderResult(
-            text=payload.translation,
+        meta = ProviderResult(
+            text="",
             model=str(response.model),
             usage=usage,
             prompt_hash=prompt.prompt_hash,
@@ -126,6 +125,54 @@ class OpenAIProvider:
             response_id=str(response.id),
             cost_usd=self._spec.cost(usage),
         )
+        return payload, meta
+
+    def translate(self, request: TranslationRequest) -> ProviderResult:
+        prompt = build_translation_prompt(
+            request.segment,
+            source_lang=request.source_lang,
+            target_lang=request.target_lang,
+            style_guide=request.style_guide,
+            glossary=request.glossary,
+            examples=request.examples,
+            context_before=request.context_before,
+            context_after=request.context_after,
+            document_summary=request.document_summary,
+        )
+        payload, meta = self._complete(
+            prompt, schema=_TRANSLATION_SCHEMA, schema_name="translation"
+        )
+        parsed = TranslationPayload.model_validate(payload)
+        return meta.model_copy(update={"text": parsed.translation})
+
+    def review(self, request: ReviewRequest) -> ReviewResult:
+        """Annotate a draft against the MQM typology."""
+        prompt = build_review_prompt(
+            request.segment,
+            request.draft,
+            source_lang=request.source_lang,
+            target_lang=request.target_lang,
+            glossary=request.glossary,
+            automatic_findings=request.automatic_findings,
+        )
+        payload, meta = self._complete(prompt, schema=_REVIEW_SCHEMA, schema_name="review")
+        return ReviewResult(review=Review.model_validate(payload), meta=meta)
+
+    def revise(self, request: RevisionRequest) -> ProviderResult:
+        prompt = build_revision_prompt(
+            request.segment,
+            request.draft,
+            request.problems,
+            source_lang=request.source_lang,
+            target_lang=request.target_lang,
+            glossary=request.glossary,
+            established_renderings=request.established_renderings,
+        )
+        payload, meta = self._complete(
+            prompt, schema=_TRANSLATION_SCHEMA, schema_name="translation"
+        )
+        parsed = TranslationPayload.model_validate(payload)
+        return meta.model_copy(update={"text": parsed.translation})
 
     @staticmethod
     def _usage(response: Any) -> TokenUsage:

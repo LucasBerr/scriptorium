@@ -137,14 +137,29 @@ def restore(text: str, placeholders: Iterable[Placeholder]) -> str:
     return result
 
 
-def check_integrity(expected: Sequence[Placeholder], translated: str) -> IntegrityReport:
-    """Compare the tokens a translation should carry with the ones it does."""
-    expected_tokens = tuple(p.token for p in expected)
-    missing = tuple(t for t in expected_tokens if t not in translated)
-    duplicated = tuple(t for t in expected_tokens if translated.count(t) > 1)
+_TOKEN_RE = re.compile(rf"{OPEN_MARK}PH\d+{CLOSE_MARK}")
 
-    found = set(re.findall(rf"{OPEN_MARK}PH\d+{CLOSE_MARK}", translated))
-    unknown = tuple(sorted(found - set(expected_tokens)))
+
+def tokens_in(text: str) -> tuple[str, ...]:
+    """The placeholder tokens present in already-protected text, in order.
+
+    The orchestrator works downstream of protection and never sees the original
+    spans, so it needs to recover what a segment is supposed to carry from the
+    protected text itself.
+    """
+    seen: list[str] = []
+    for token in _TOKEN_RE.findall(text):
+        if token not in seen:
+            seen.append(token)
+    return tuple(seen)
+
+
+def check_tokens(expected: Sequence[str], translated: str) -> IntegrityReport:
+    """Compare the tokens a translation should carry with the ones it does."""
+    expected_tokens = tuple(expected)
+    missing = tuple(token for token in expected_tokens if token not in translated)
+    duplicated = tuple(token for token in expected_tokens if translated.count(token) > 1)
+    unknown = tuple(sorted(set(_TOKEN_RE.findall(translated)) - set(expected_tokens)))
 
     return IntegrityReport(
         expected=expected_tokens,
@@ -152,3 +167,8 @@ def check_integrity(expected: Sequence[Placeholder], translated: str) -> Integri
         duplicated=duplicated,
         unknown=unknown,
     )
+
+
+def check_integrity(expected: Sequence[Placeholder], translated: str) -> IntegrityReport:
+    """Token integrity for a translation whose source placeholders are known."""
+    return check_tokens([p.token for p in expected], translated)

@@ -12,7 +12,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
-from scriptorium.domain import GlossaryTerm, Segment, TMEntry, TokenUsage
+from scriptorium.domain import GlossaryTerm, Review, Segment, TMEntry, TokenUsage
 
 
 class OfflineError(RuntimeError):
@@ -88,3 +88,72 @@ class TranslationPayload(BaseModel):
 
     translation: str = Field(description="The translated segment, placeholders intact")
     notes: str = Field(default="", max_length=200, description="Only if something was ambiguous")
+
+
+class ReviewRequest(BaseModel):
+    """What the reviewer role is given.
+
+    The reviewer sees the automatic findings too. Hiding them would waste the
+    cheaper, deterministic checks that already ran, and would let the model
+    "accept" a segment a checker has already failed.
+    """
+
+    segment: Segment
+    draft: str
+    source_lang: str
+    target_lang: str
+    glossary: tuple[GlossaryTerm, ...] = ()
+    automatic_findings: tuple[str, ...] = ()
+
+
+class RevisionRequest(BaseModel):
+    """A draft plus the problems that must be resolved.
+
+    `established_renderings` is how document-wide consistency is enforced on a
+    segment translated in isolation: the form a term already took earlier in this
+    document is passed down as binding.
+    """
+
+    segment: Segment
+    draft: str
+    source_lang: str
+    target_lang: str
+    problems: tuple[str, ...]
+    glossary: tuple[GlossaryTerm, ...] = ()
+    established_renderings: tuple[tuple[str, str], ...] = ()
+
+
+class ReviewResult(BaseModel):
+    """A review and what the review itself cost.
+
+    The metering travels with the review because review calls are part of the
+    bill. Returning only the annotations would make arm B3's cost per 1,000
+    words understate the pipeline by however much reviewing costs — and that
+    column is one of the project's headline claims.
+    """
+
+    review: Review
+    meta: ProviderResult
+
+
+@runtime_checkable
+class Reviewer(Protocol):
+    """Annotate a translation against the MQM typology."""
+
+    def review(self, request: ReviewRequest) -> ReviewResult: ...
+
+
+@runtime_checkable
+class Reviser(Protocol):
+    """Correct a draft against a list of findings."""
+
+    def revise(self, request: RevisionRequest) -> ProviderResult: ...
+
+
+@runtime_checkable
+class AgenticProvider(LLMProvider, Reviewer, Reviser, Protocol):
+    """Everything :class:`scriptorium.orchestrator.TranslationLoop` needs.
+
+    Python has no intersection type, so the three capabilities are composed into
+    one protocol here rather than being spelled out at every call site.
+    """

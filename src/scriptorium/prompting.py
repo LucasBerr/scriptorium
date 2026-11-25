@@ -25,6 +25,8 @@ from pydantic import BaseModel
 from scriptorium.domain import GlossaryTerm, Segment, TMEntry
 
 TRANSLATE_TEMPLATE = "translate_v1.md"
+REVIEW_TEMPLATE = "review_v1.md"
+REVISE_TEMPLATE = "revise_v1.md"
 
 
 class Prompt(BaseModel):
@@ -126,5 +128,82 @@ def build_translation_prompt(
         system=system,
         cacheable=cacheable,
         volatile="\n\n".join(volatile_parts),
+        template_hash=template_hash,
+    )
+
+
+def build_review_prompt(
+    segment: Segment,
+    draft: str,
+    *,
+    source_lang: str,
+    target_lang: str,
+    glossary: Sequence[GlossaryTerm] = (),
+    automatic_findings: Sequence[str] = (),
+) -> Prompt:
+    """Assemble the reviewer prompt.
+
+    Same caching discipline as translation: the rubric and the term base are
+    stable across a whole document and go first; the segment and the draft go
+    last.
+    """
+    template, template_hash = _template(REVIEW_TEMPLATE)
+    system = template.format(source_lang=source_lang, target_lang=target_lang)
+
+    cacheable = _render_glossary(glossary)
+
+    volatile_parts = [f"SOURCE:\n{segment.text}", f"CANDIDATE TRANSLATION:\n{draft}"]
+    if automatic_findings:
+        volatile_parts.append(
+            "AUTOMATIC FINDINGS (already confirmed by deterministic checks):\n"
+            + "\n".join(f"- {finding}" for finding in automatic_findings)
+        )
+
+    return Prompt(
+        system=system,
+        cacheable=cacheable,
+        volatile="\n\n".join(volatile_parts),
+        template_hash=template_hash,
+    )
+
+
+def build_revision_prompt(
+    segment: Segment,
+    draft: str,
+    problems: Sequence[str],
+    *,
+    source_lang: str,
+    target_lang: str,
+    glossary: Sequence[GlossaryTerm] = (),
+    established_renderings: Sequence[tuple[str, str]] = (),
+) -> Prompt:
+    """Assemble the revision prompt.
+
+    Established renderings are passed as binding, which is what turns a
+    segment-by-segment pipeline into a document-consistent one.
+    """
+    template, template_hash = _template(REVISE_TEMPLATE)
+    system = template.format(source_lang=source_lang, target_lang=target_lang)
+
+    cacheable_parts = [_render_glossary(glossary)]
+    if established_renderings:
+        cacheable_parts.append(
+            "ESTABLISHED RENDERINGS (already used earlier in this document, binding):\n"
+            + "\n".join(f"- {source} -> {target}" for source, target in established_renderings)
+        )
+    cacheable = "\n\n".join(p for p in cacheable_parts if p)
+
+    volatile = "\n\n".join(
+        [
+            f"SOURCE:\n{segment.text}",
+            f"YOUR PREVIOUS TRANSLATION:\n{draft}",
+            "PROBLEMS TO FIX:\n" + "\n".join(f"- {problem}" for problem in problems),
+        ]
+    )
+
+    return Prompt(
+        system=system,
+        cacheable=cacheable,
+        volatile=volatile,
         template_hash=template_hash,
     )
