@@ -2,5 +2,12 @@
 
 from scriptorium.adapters.base import DocumentAdapter, LicenceMissingError, Provenance
 from scriptorium.adapters.epub import EpubAdapter
+from scriptorium.adapters.po import PoAdapter
 
-__all__ = ["DocumentAdapter", "EpubAdapter", "LicenceMissingError", "Provenance"]
+__all__ = [
+    "DocumentAdapter",
+    "EpubAdapter",
+    "LicenceMissingError",
+    "PoAdapter",
+    "Provenance",
+]

@@ -57,7 +57,11 @@ class DocumentAdapter(Protocol):
     ) -> None:
         """Write a copy of `path` with each segment replaced by its translation.
 
-        Segment ids absent from `translations` keep their source text, which is
-        what makes an untranslated reassembly a usable round-trip test.
+        A segment absent from `translations` is left as the source file had it.
+        What that means is format-specific and deliberately so: in an EPUB the
+        text lives in the document, so the source text stays; in a `.po` catalog
+        the target is a separate field, so the existing `msgstr` stays, empty
+        included. Either way, a reassembly with no translations reproduces the
+        input, which is what makes the round-trip test possible.
         """
         ...
